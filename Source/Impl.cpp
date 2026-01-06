@@ -1,6 +1,8 @@
 #include <format>
 
 #include "Impl.hpp"
+#include "coreinit/debug.h"
+#include "whb/log.h"
 
 namespace Exception
 {
@@ -15,7 +17,13 @@ namespace Exception
 
     void DSI::panic(std::string name, OSContext* context)
     {
-        std::string message = std::format("{0} Exception occurred from 0x{1:08X} in 0x{2:08X}", name, context->srr0, context->dar);
+        uint32_t codeAddress = context->srr0;
+        uint32_t dataAddress = context->dar;
+
+        char symbol[1024];
+        OSGetSymbolName(codeAddress, symbol, sizeof(symbol));
+        std::string message = std::format("{0} Exception occurred from 0x{1:08X} in 0x{2:08X}\nSymbol: {3}", name, codeAddress, dataAddress, symbol);
+        WHBLogPrintf("%s", message.c_str());
         OSFatal(message.c_str());
     }
     

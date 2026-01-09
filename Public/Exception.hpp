@@ -2,5 +2,5 @@
 
 namespace Exception
 {
-    void Init();
+    void Initialize();
 }

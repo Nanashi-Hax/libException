@@ -5,5 +5,5 @@
 ```
 
 ```cpp
-Exception::Init();
+Exception::Initialize();
 ```

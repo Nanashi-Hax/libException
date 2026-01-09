@@ -2,7 +2,7 @@
 
 namespace Exception
 {
-    void Init()
+    void Initialize()
     {
         Patch::apply();
     }

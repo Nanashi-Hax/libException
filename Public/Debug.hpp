@@ -1,15 +1,14 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 #include <coreinit/thread.h>
+
+#include "Debug/Thread.hpp"
 
 namespace Library::Debug
 {
-    void InitializeException();
+    void Initialize();
     
     void SetIABR(uint32_t value);
     void SetDABR(uint32_t value);
-
-    std::vector<OSThread*> GetAllThread();
 }

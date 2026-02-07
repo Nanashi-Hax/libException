@@ -4,7 +4,10 @@
 
 namespace Library::Debug
 {
-    Thread::Thread(OSThread* os) : os(os) {}
+    OSThread* Thread::raw()
+    {
+        return _raw;
+    }
 
     std::vector<Thread> Thread::all()
     {
@@ -35,7 +38,9 @@ namespace Library::Debug
         {
             Thread t(it);
         }
-        
+
         return threads;
     }
+
+    Thread::Thread(OSThread* raw) : _raw(raw) {}
 }

@@ -8,11 +8,13 @@ namespace Library::Debug
     class Thread
     {
     public:
-        Thread(OSThread* os);
+        OSThread* raw();
 
         static std::vector<Thread> all();
 
     private:
-        OSThread* os;
+        Thread(OSThread* raw);
+
+        OSThread* _raw;
     };
 }

@@ -4,10 +4,10 @@
 #include <coreinit/context.h>
 #include <coreinit/debug.h>
 
-#include "Base.hpp"
+#include "Exception/Base.hpp"
 #include <whb/log.h>
 
-namespace Exception
+namespace Library::Debug
 {
     void Base::panic(std::string name, OSContext* context)
     {

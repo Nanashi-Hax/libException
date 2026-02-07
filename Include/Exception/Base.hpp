@@ -6,7 +6,7 @@
 #include <coreinit/debug.h>
 #include <coreinit/exception.h>
 
-namespace Exception
+namespace Library::Debug
 {
     class Base
     {

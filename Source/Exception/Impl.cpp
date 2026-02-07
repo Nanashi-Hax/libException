@@ -1,11 +1,12 @@
 #include <format>
 
-#include "Impl.hpp"
-#include "coreinit/debug.h"
-#include "Coreinit/memorymap.h"
-#include "whb/log.h"
+#include "Exception/Impl.hpp"
+#include <coreinit/debug.h>
+#include <coreinit/memorymap.h>
+#include <whb/log.h>
+#include <notifications/notifications.h>
 
-namespace Exception
+namespace Library::Debug
 {
     std::string SystemReset::name() { return "SystemReset"; }
     OSExceptionType SystemReset::type() { return OSExceptionType::OS_EXCEPTION_TYPE_SYSTEM_RESET; }
@@ -27,22 +28,22 @@ namespace Exception
             {
                 char symbol[1024];
                 OSGetSymbolName(codeAddress, symbol, sizeof(symbol));
-                message += std::format("Code: {0} Symbol: {1}\n", codeAddress, symbol);
+                message += std::format("Code: {0:08X} Symbol: {1}\n", codeAddress, symbol);
             }
             else
             {
-                message += std::format("Code: {0}\n", codeAddress);
+                message += std::format("Code: {:08X}\n", codeAddress);
             }
 
             if(OSIsAddressValid(dataAddress))
             {
                 char symbol[1024];
                 OSGetSymbolName(dataAddress, symbol, sizeof(symbol));
-                message += std::format("Code: {0} Symbol: {1}\n", dataAddress, symbol);
+                message += std::format("Data: {0:08X} Symbol: {1}\n", dataAddress, symbol);
             }
             else
             {
-                message += std::format("Code: {0}\n", dataAddress);
+                message += std::format("Data: {:08X}\n", dataAddress);
             }
             WHBLogPrintf("%s", message.c_str());
             OSFatal(message.c_str());
@@ -64,8 +65,10 @@ namespace Exception
         }
         else
         {
-            // 通知の準備
-            queue.push_back(*context);
+            // ログを出す
+            std::string msg = std::format("DSISR: {:08X}, DAR: {:08X}, SRR0: {:08X}", context->dsisr, context->dar, context->srr0);
+            WHBLogPrintf("%s", msg.c_str());
+            NotificationModule_AddInfoNotification(msg.c_str());
 
             // 復帰処理
             context->srr0 += 4;

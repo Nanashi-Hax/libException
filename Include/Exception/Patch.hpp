@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Exception
+namespace Library::Debug
 {
     class Patch
     {

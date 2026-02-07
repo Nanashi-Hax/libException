@@ -1,8 +1,8 @@
-#include "Patch.hpp"
-#include "Callback.hpp"
-#include "Impl.hpp"
+#include "Exception/Patch.hpp"
+#include "Exception/Callback.hpp"
+#include "Exception/Impl.hpp"
 
-namespace Exception
+namespace Library::Debug
 {
     void Patch::apply()
     {

@@ -31,10 +31,10 @@ MachineDependent := -DESPRESSO -mcpu=750 -meabi -mhard-float
 #-------------------------------------------------------------------------------
 TopDir := $(CURDIR)
 
-Target := libException
+Target := libDebug
 
 SourceDir := $(TopDir)/Source
-IncludeDir := $(TopDir)/Include
+IncludeDir := $(TopDir)/Include $(TopDir)/Public
 PublicDir := $(TopDir)/Public
 BuildDir := $(TopDir)/Build
 DistDir := $(TopDir)/Dist
@@ -53,6 +53,10 @@ BuildDependenceDir := $(BuildDir)/Dependence
 CppFile := $(shell find $(SourceDir) -type f -name '*.cpp')
 CppRelative := $(call abs2rel,$(CppFile),$(SourceDir))
 BuildObjectCppFile := $(patsubst %.cpp,$(BuildObjectDir)/Cpp/%.o,$(CppRelative))
+
+SFile := $(shell find $(SourceDir) -type f -name '*.s')
+SRelative := $(call abs2rel,$(SFile),$(SourceDir))
+BuildObjectSFile := $(patsubst %.s,$(BuildObjectDir)/S/%.o,$(SRelative))
 
 DistLibraryFile := $(DistDir)/$(Target).a
 InstallLibDir := $(User)/Lib
@@ -74,9 +78,10 @@ IncludeDirs := $(IncludeDir) $(BuildIncludeDir) $(LibraryIncludeDirs)
 IncludeFlags := $(foreach dir,$(IncludeDirs),-I$(dir))
 
 #-------------------------------------------------------------------------------
-# Cpp Flags
+# Flags
 #-------------------------------------------------------------------------------
 CppFlags := $(MachineDependent) $(IncludeFlags) $(LibraryFlags) -Wall -O3 -ffunction-sections -std=c++23
+SFlags := -mregnames
 
 #-------------------------------------------------------------------------------
 # Linker Flags
@@ -94,7 +99,11 @@ $(BuildObjectDir)/Cpp/%.o: $(SourceDir)/%.cpp
 	@echo $(notdir $<)
 	$(call cpp2o,$<,$@,$(BuildDependenceDir)/$*.d,$(CppFlags))
 
-$(DistDir)/%.a: $(BuildObjectCppFile)
+$(BuildObjectDir)/S/%.o: $(SourceDir)/%.s
+	@echo $(notdir $<)
+	$(call s2o,$<,$@,$(BuildDependenceDir)/$*.d,$(SFlags))
+
+$(DistDir)/%.a: $(BuildObjectCppFile) $(BuildObjectSFile)
 	@echo linking ... $(notdir $@)
 	$(call o2a,$^,$@)
 

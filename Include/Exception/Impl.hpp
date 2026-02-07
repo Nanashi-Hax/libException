@@ -5,9 +5,9 @@
 #include <coreinit/context.h>
 #include <coreinit/exception.h>
 
-#include "Base.hpp"
+#include "Exception/Base.hpp"
 
-namespace Exception
+namespace Library::Debug
 {
     class SystemReset : public Base
     {

@@ -4,33 +4,36 @@
 
 namespace Library::Debug
 {
-    OSThread* Thread::raw()
+    std::string Thread::name()
     {
-        return _raw;
+        return _name;
     }
 
-std::vector<Thread> Thread::all()
-{
-    OSThread* it = OSGetCurrentThread();
-    if (!it) return {};
-
-    // 先頭まで戻る
-    while (it->link.prev)
+    uint16_t Thread::id()
     {
-        it = it->link.prev;
+        return _id;
     }
 
-    std::vector<Thread> threads;
-
-    // 最後まで走査
-    for (OSThread* cur = it; cur; cur = cur->link.next)
+    std::vector<Thread> Thread::all()
     {
-        Thread t(cur);
-        threads.emplace_back(t);
+        OSThread* it = OSGetCurrentThread();
+        if (!it) return {};
+
+        while (it->link.prev)
+        {
+            it = it->link.prev;
+        }
+
+        std::vector<Thread> threads;
+
+        for (OSThread* cur = it; cur; cur = cur->link.next)
+        {
+            Thread t(cur->name, cur->id);
+            threads.emplace_back(t);
+        }
+
+        return threads;
     }
 
-    return threads;
-}
-
-    Thread::Thread(OSThread* raw) : _raw(raw) {}
+    Thread::Thread(std::string name, uint16_t id) : _name(name), _id(id) {}
 }

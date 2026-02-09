@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include <coreinit/thread.h>
 
 namespace Library::Debug
@@ -8,13 +9,15 @@ namespace Library::Debug
     class Thread
     {
     public:
-        OSThread* raw();
-
         static std::vector<Thread> all();
 
-    private:
-        Thread(OSThread* raw);
+        std::string name();
+        uint16_t id();
 
-        OSThread* _raw;
+    private:
+        Thread(std::string name, uint16_t id);
+
+        std::string _name;
+        uint16_t _id;
     };
 }

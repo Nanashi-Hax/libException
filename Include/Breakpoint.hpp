@@ -3,8 +3,11 @@
 #include <cstdint>
 #include <atomic>
 #include <array>
+#include <vector>
 
 #include <coreinit/thread.h>
+
+#include "Debug/Breakpoint.hpp"
 
 namespace Library::Debug
 {
@@ -15,12 +18,6 @@ namespace Library::Debug
         extern OSSwitchThreadCallbackFn OSSwitchThreadCallbackDefault;
     }
 
-    struct DSIInfo
-    {
-        uint32_t dar;
-        uint32_t srr0;
-    };
-
     class BreakpointManager
     {
     public:
@@ -29,8 +26,10 @@ namespace Library::Debug
 
         static bool IsInitialized();
 
-        static void SetDataBreakpoint(uint32_t address, bool read, bool write);
+        static void SetDataBreakpoint(uint32_t address, bool read, bool write, BreakpointSize size);
         static void UnsetDataBreakpoint();
+
+        static std::vector<DataBreakInfo> ConsumeDataBreakInfo();
 
     private:
         static void SetIABR(uint32_t value);
@@ -38,21 +37,23 @@ namespace Library::Debug
 
         static void ExcecuteInstruction(OSContext* context, uint32_t instruction);
 
-        static void SetDSICallback(OSExceptionCallbackFn callback);
+        static void SetDSICallback(OSExceptionCallbackFn function);
         static void SetSwitchThreadCallback(OSSwitchThreadCallbackFn function);
 
         static BOOL DSIHandler(OSContext* context);
         static void SwitchThreadHandler(OSThread* thread, OSThreadQueue*);
 
         static inline std::atomic<uint32_t> dabr{0};
+        static inline std::atomic<uint32_t> dataBreakpointAddress{0};
+        static inline std::atomic<uint32_t> dataBreakpointSize{0};
 
         static constexpr size_t DAR_BUF_SIZE = 256;
         static constexpr uint32_t DAR_MASK = DAR_BUF_SIZE - 1;
         static_assert((DAR_BUF_SIZE & (DAR_BUF_SIZE - 1)) == 0, "DAR_BUF_SIZE must be power of two");
 
-        static inline std::array<DSIInfo, DAR_BUF_SIZE> dsiBuf{};
-        static inline std::atomic<uint32_t> dsiHead{0};
-        static inline std::atomic<uint32_t> dsiTail{0};
+        static inline std::array<DataBreakInfo, DAR_BUF_SIZE> infoBuffer{};
+        static inline std::atomic<uint32_t> infoHead{0};
+        static inline std::atomic<uint32_t> infoTail{0};
 
         static inline std::atomic<uint32_t> lastThreadAddr = 0;
         static inline std::atomic<uint32_t> lastDabrSet = 0;

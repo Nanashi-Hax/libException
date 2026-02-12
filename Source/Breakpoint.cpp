@@ -4,28 +4,55 @@
 
 #include <coreinit/debug.h>
 #include <coreinit/memorymap.h>
+#include <vector>
 
 #include "Breakpoint.hpp"
+#include "Debug/Breakpoint.hpp"
 #include "Syscall.hpp"
+#include "coreinit/exception.h"
 
 namespace Library::Debug
 {
-    void BreakpointManager::SetDataBreakpoint(uint32_t address, bool read, bool write)
+    void BreakpointManager::SetDataBreakpoint(uint32_t address, bool read, bool write, BreakpointSize size)
     {
         uint32_t enabled = true;
         uint32_t r = static_cast<uint32_t>(read);
         uint32_t w = static_cast<uint32_t>(write);
         uint32_t value = address | (enabled << 2 | w << 1 | r << 0);
         dabr.store(value, std::memory_order_relaxed);
-        dsiHead.store(0, std::memory_order_relaxed);
-        dsiTail.store(0, std::memory_order_relaxed);
+        infoHead.store(0, std::memory_order_relaxed);
+        infoTail.store(0, std::memory_order_relaxed);
+
+        dataBreakpointAddress.store(address);
+        dataBreakpointSize.store(static_cast<uint32_t>(size));
     }
 
     void BreakpointManager::UnsetDataBreakpoint()
     {
+        dataBreakpointAddress.store(0);
+        dataBreakpointSize.store(0);
+
         dabr.store(0, std::memory_order_relaxed);
-        dsiHead.store(0, std::memory_order_relaxed);
-        dsiTail.store(0, std::memory_order_relaxed);
+        infoHead.store(0, std::memory_order_relaxed);
+        infoTail.store(0, std::memory_order_relaxed);
+    }
+
+    std::vector<DataBreakInfo> BreakpointManager::ConsumeDataBreakInfo()
+    {
+        std::vector<DataBreakInfo> vector;
+
+        uint32_t h = infoHead.load(std::memory_order_relaxed);
+        uint32_t t = infoTail.load(std::memory_order_acquire);
+
+        while (h != t)
+        {
+            vector.push_back(infoBuffer[h]);
+            h = (h + 1) & DAR_MASK;
+        }
+
+        infoHead.store(h, std::memory_order_release);
+
+        return vector;
     }
 
     constexpr inline uint32_t OP_LWZ  = 32;
@@ -166,6 +193,16 @@ namespace Library::Debug
         }
     }
 
+    void BreakpointManager::SetDSICallback(OSExceptionCallbackFn function)
+    {
+        OSSetExceptionCallbackEx(OS_EXCEPTION_MODE_THREAD_ALL_CORES, OS_EXCEPTION_TYPE_DSI, function);
+    }
+
+    void BreakpointManager::SetSwitchThreadCallback(OSSwitchThreadCallbackFn function)
+    {
+        OSSetSwitchThreadCallback(function);
+    }
+
     BOOL BreakpointManager::DSIHandler(OSContext* context)
     {
         if ((context->dsisr & (1 << 22)) == 0)
@@ -177,21 +214,32 @@ namespace Library::Debug
         if (!context) return FALSE;
         
         // 非ブロッキングで push する
-        uint32_t t = dsiTail.load(std::memory_order_relaxed);
+        uint32_t t = infoTail.load(std::memory_order_relaxed);
         uint32_t next = (t + 1) & DAR_MASK;
-        uint32_t h = dsiHead.load(std::memory_order_acquire);
+        uint32_t h = infoHead.load(std::memory_order_acquire);
         
         if (next == h)
         {
             // バッファ満杯 -> ドロップ（安全策）。上書きしたければ darHead を進める実装に変える。
             // 何もせずに戻す（必要なら統計カウンタを増やすくらい）
-        } else {
-            dsiBuf[t] =
+        }
+        else
+        {
+            uint32_t dar = context->dar;
+
+            uint32_t size = dataBreakpointSize.load();
+            uint32_t begin = dataBreakpointAddress.load();
+            uint32_t end = begin + size;
+            
+            if((begin <= dar || dar < end))
             {
-                context->dar,
-                context->srr0
-            };
-            dsiTail.store(next, std::memory_order_release);
+                infoBuffer[t] =
+                {
+                    context->dar,
+                    context->srr0
+                };
+                infoTail.store(next, std::memory_order_release);
+            }
         }
     
         SetDABR(0);

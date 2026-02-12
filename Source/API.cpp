@@ -1,4 +1,5 @@
 #include "Breakpoint.hpp"
+#include "Debug/Breakpoint.hpp"
 #include "Exception/Patch.hpp"
 #include "Debug.hpp"
 #include "Syscall.hpp"
@@ -23,15 +24,20 @@ namespace Library::Debug
         BreakpointManager::Shutdown();
     }
 
-    void SetDataBreakpoint(uint32_t address, bool read, bool write)
+    void SetDataBreakpoint(uint32_t address, bool read, bool write, BreakpointSize size)
     {
         if(!BreakpointManager::IsInitialized()) return;
-        BreakpointManager::SetDataBreakpoint(address, read, write);
+        BreakpointManager::SetDataBreakpoint(address, read, write, size);
     }
 
     void UnsetDataBreakpoint()
     {
         if(!BreakpointManager::IsInitialized()) return;
         BreakpointManager::UnsetDataBreakpoint();
+    }
+
+    std::vector<DataBreakInfo> ConsumeDataBreakInfo()
+    {
+        return BreakpointManager::ConsumeDataBreakInfo();
     }
 }

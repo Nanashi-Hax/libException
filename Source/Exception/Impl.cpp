@@ -69,9 +69,6 @@ namespace Library::Debug
             std::string msg = std::format("DSISR: {:08X}, DAR: {:08X}, SRR0: {:08X}", context->dsisr, context->dar, context->srr0);
             WHBLogPrintf("%s", msg.c_str());
             NotificationModule_AddInfoNotification(msg.c_str());
-
-            // 復帰処理
-            context->srr0 += 4;
             return true;
         }
     }

@@ -1,6 +1,7 @@
 .global SC_SetIABR
 SC_SetIABR:
     mtspr 0x3F2, r3
+    isync
     blr
 
 .global SetIABR
@@ -13,6 +14,7 @@ SetIABR:
 .global SC_SetDABR
 SC_SetDABR:
     mtspr 0x3F5, r3
+    isync
     blr
 
 .global SetDABR

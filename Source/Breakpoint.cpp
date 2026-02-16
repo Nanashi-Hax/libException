@@ -1,6 +1,4 @@
 #include <cstdint>
-#include <string>
-#include <format>
 
 #include <coreinit/debug.h>
 #include <coreinit/memorymap.h>
@@ -9,48 +7,75 @@
 #include "Breakpoint.hpp"
 #include "Debug/Breakpoint.hpp"
 #include "Syscall.hpp"
+#include "Exception.hpp"
 #include "coreinit/exception.h"
 
 namespace Library::Debug
 {
     void BreakpointManager::SetDataBreakpoint(uint32_t address, bool read, bool write, BreakpointSize size)
     {
+        uint32_t mask = (1 << 0) | (1 << 1) | (1 << 2);
+        address &= ~(mask);
         uint32_t enabled = true;
         uint32_t r = static_cast<uint32_t>(read);
         uint32_t w = static_cast<uint32_t>(write);
         uint32_t value = address | (enabled << 2 | w << 1 | r << 0);
+        dBreakpointAddress.store(address);
+        dBreakpointSize.store(static_cast<uint32_t>(size));
         dabr.store(value, std::memory_order_relaxed);
-        infoHead.store(0, std::memory_order_relaxed);
-        infoTail.store(0, std::memory_order_relaxed);
-
-        dataBreakpointAddress.store(address);
-        dataBreakpointSize.store(static_cast<uint32_t>(size));
+        dInfoBuffer.clear();
     }
 
     void BreakpointManager::UnsetDataBreakpoint()
     {
-        dataBreakpointAddress.store(0);
-        dataBreakpointSize.store(0);
-
+        dBreakpointAddress.store(0);
+        dBreakpointSize.store(0);
         dabr.store(0, std::memory_order_relaxed);
-        infoHead.store(0, std::memory_order_relaxed);
-        infoTail.store(0, std::memory_order_relaxed);
+        dInfoBuffer.clear();
+    }
+
+    void BreakpointManager::SetInstructionBreakpoint(uint32_t address)
+    {
+        uint32_t mask = (1 << 0) | (1 << 1);
+        address &= ~(mask);
+        uint32_t enabled = true;
+        uint32_t value = address | (enabled << 1);
+        iBreakpointAddress.store(address);
+        iabr.store(value, std::memory_order_relaxed);
+        iInfoBuffer.clear();
+    }
+
+    void BreakpointManager::UnsetInstructionBreakpoint()
+    {
+        iBreakpointAddress.store(0);
+        iabr.store(0, std::memory_order_relaxed);
+        iInfoBuffer.clear();
     }
 
     std::vector<DataBreakInfo> BreakpointManager::ConsumeDataBreakInfo()
     {
         std::vector<DataBreakInfo> vector;
 
-        uint32_t h = infoHead.load(std::memory_order_relaxed);
-        uint32_t t = infoTail.load(std::memory_order_acquire);
-
-        while (h != t)
+        while (true)
         {
-            vector.push_back(infoBuffer[h]);
-            h = (h + 1) & DAR_MASK;
+            DataBreakInfo info;
+            if(!dInfoBuffer.pop(info)) break;
+            vector.push_back(info);
         }
 
-        infoHead.store(h, std::memory_order_release);
+        return vector;
+    }
+
+    std::vector<InstructionBreakInfo> BreakpointManager::ConsumeInstructionBreakInfo()
+    {
+        std::vector<InstructionBreakInfo> vector;
+
+        while (true)
+        {
+            InstructionBreakInfo info;
+            if(!iInfoBuffer.pop(info)) break;
+            vector.push_back(info);
+        }
 
         return vector;
     }
@@ -84,6 +109,10 @@ namespace Library::Debug
 
     void BreakpointManager::Initialize()
     {
+        Exception::SetCallback(OS_EXCEPTION_TYPE_DSI, DSIHandler);
+        Exception::SetCallback(OS_EXCEPTION_TYPE_BREAKPOINT, BreakpointHandler);
+        Exception::SetCallback(OS_EXCEPTION_TYPE_TRACE, TraceHandler);
+
         SetSwitchThreadCallback(SwitchThreadHandler);
         isInitialized = true;
     }
@@ -99,189 +128,14 @@ namespace Library::Debug
         return isInitialized;
     }
 
-    void BreakpointManager::SetIABR(uint32_t value)
-    {
-        ::SetIABR(value);
-    }
-
     void BreakpointManager::SetDABR(uint32_t value)
     {
         ::SetDABR(value);
     }
 
-    void BreakpointManager::ExcecuteInstruction(OSContext* context, uint32_t instruction)
+    void BreakpointManager::SetIABR(uint32_t value)
     {
-        if (!context) return;
-
-        uint32_t op   = (instruction >> 26) & 0x3F;
-        uint32_t rD   = (instruction >> 21) & 0x1F;
-        uint32_t rA   = (instruction >> 16) & 0x1F;
-        int16_t simm  = static_cast<int16_t>(instruction & 0xFFFF);
-
-        uint32_t ea;
-        if (rA == 0) ea = (int32_t)simm;
-        else ea = context->gpr[rA] + (int32_t)simm;
-
-        if (!OSIsAddressValid(ea)) return;
-
-        switch (op)
-        {
-            case OP_LWZ:
-            case OP_LWZU:
-            {
-                uint32_t value = *(uint32_t*)ea;
-                context->gpr[rD] = value;
-
-                if (op == OP_LWZU) context->gpr[rA] = ea;
-
-                return;
-            }
-
-            case OP_LBZ:
-            case OP_LBZU:
-            {
-                uint32_t value = *(uint8_t*)ea;
-                context->gpr[rD] = value;
-
-                if (op == OP_LBZU) context->gpr[rA] = ea;
-
-                return;
-            }
-
-            case OP_LHZ:
-            case OP_LHZU:
-            {
-                uint32_t value = *(uint16_t*)ea;
-                context->gpr[rD] = value;
-
-                if (op == OP_LHZU) context->gpr[rA] = ea;
-
-                return;
-            }
-
-            case OP_STW:
-            case OP_STWU:
-            {
-                uint32_t value = context->gpr[rD];
-                *(uint32_t*)ea = value;
-
-                if (op == OP_STWU) context->gpr[rA] = ea;
-
-                return;
-            }
-
-            case OP_STB:
-            case OP_STBU:
-            {
-                uint32_t value = context->gpr[rD];
-                *(uint8_t*)ea = value;
-
-                if (op == OP_STBU) context->gpr[rA] = ea;
-
-                return;
-            }
-
-            case OP_STH:
-            case OP_STHU:
-            {
-                uint32_t value = context->gpr[rD];
-                *(uint16_t*)ea = value;
-
-                if (op == OP_STHU) context->gpr[rA] = ea;
-
-                return;
-            }
-
-            case OP_LMW:
-            {
-                uint32_t addr = ea;
-            
-                for (uint32_t reg = rD; reg < 32; ++reg)
-                {
-                    if (!OSIsAddressValid(addr)) break;
-                
-                    context->gpr[reg] = *(uint32_t*)addr;
-                    addr += 4;
-                }
-            
-                return;
-            }
-
-            case OP_STMW:
-            {
-                uint32_t addr = ea;
-            
-                for (uint32_t reg = rD; reg < 32; ++reg)
-                {
-                    if (!OSIsAddressValid(addr)) break;
-                
-                    *(uint32_t*)addr = context->gpr[reg];
-                    addr += 4;
-                }
-            
-                return;
-            }
-
-            case OP_LFS:
-            case OP_LFSU:
-            {
-                float value = *(float*)ea;
-                context->fpr[rD] = static_cast<double>(value);
-            
-                if (op == OP_LFSU)
-                    context->gpr[rA] = ea;
-            
-                return;
-            }
-            
-            case OP_LFD:
-            case OP_LFDU:
-            {
-                double value = *(double*)ea;
-                context->fpr[rD] = value;
-            
-                if (op == OP_LFDU)
-                    context->gpr[rA] = ea;
-            
-                return;
-            }
-            
-            case OP_STFS:
-            case OP_STFSU:
-            {
-                float value = static_cast<float>(context->fpr[rD]);
-                *(float*)ea = value;
-            
-                if (op == OP_STFSU)
-                    context->gpr[rA] = ea;
-            
-                return;
-            }
-            
-            case OP_STFD:
-            case OP_STFDU:
-            {
-                double value = context->fpr[rD];
-                *(double*)ea = value;
-            
-                if (op == OP_STFDU)
-                    context->gpr[rA] = ea;
-            
-                return;
-            }
-
-            default:
-            {
-                std::string msg = std::format("Instruction: {:08X}", instruction);
-                OSFatal(msg.c_str());
-                return;
-            }
-        }
-    }
-
-    void BreakpointManager::SetDSICallback(OSExceptionCallbackFn function)
-    {
-        OSSetExceptionCallbackEx(OS_EXCEPTION_MODE_THREAD_ALL_CORES, OS_EXCEPTION_TYPE_DSI, function);
+        ::SetIABR(value);
     }
 
     void BreakpointManager::SetSwitchThreadCallback(OSSwitchThreadCallbackFn function)
@@ -291,7 +145,7 @@ namespace Library::Debug
 
     BOOL BreakpointManager::DSIHandler(OSContext* context)
     {
-        if ((context->dsisr & (1 << 22)) == 0)
+        if ((context->dsisr & (MATCH_DABR_BIT)) == 0)
         {
             OSFatal("DSI");
             return FALSE;
@@ -299,50 +153,94 @@ namespace Library::Debug
 
         if (!context) return FALSE;
         
-        uint32_t t = infoTail.load(std::memory_order_relaxed);
-        uint32_t next = (t + 1) & DAR_MASK;
-        uint32_t h = infoHead.load(std::memory_order_acquire);
-        
-        if(next != h)
-        {
-            uint32_t dar = context->dar;
+        uint32_t dar = context->dar;
 
-            uint32_t size = dataBreakpointSize.load();
-            uint32_t begin = dataBreakpointAddress.load();
-            uint32_t end = begin + size;
-            
-            if((begin <= dar || dar < end))
+        uint32_t size = dBreakpointSize.load();
+        uint32_t begin = dBreakpointAddress.load();
+        uint32_t end = begin + size;
+        
+        if((begin <= dar || dar < end))
+        {
+            DataBreakInfo info =
             {
-                infoBuffer[t] =
-                {
-                    context->dar,
-                    context->srr0
-                };
-                infoTail.store(next, std::memory_order_release);
-            }
+                context->dar,
+                context->srr0
+            };
+            dInfoBuffer.push(info);
         }
     
         SetDABR(0);
-        ExcecuteInstruction(context, *(uint32_t*)context->srr0);
-        SetDABR(dabr.load());
-
-        context->srr0 += 4;
+        context->srr1 |= SINGLE_STEP_BIT;
         return TRUE;
+    }
+
+    BOOL BreakpointManager::BreakpointHandler(OSContext* context)
+    {
+        if (!context) return FALSE;
+        
+        uint32_t pc = context->srr0;
+
+        uint32_t address = iBreakpointAddress.load();
+        
+        if(address == pc)
+        {
+            InstructionBreakInfo info =
+            {
+                context->srr0
+            };
+            iInfoBuffer.push(info);
+        }
+    
+        SetIABR(0);
+        context->srr1 |= SINGLE_STEP_BIT;
+        return TRUE;
+    }
+
+    BOOL BreakpointManager::TraceHandler(OSContext* context)
+    {
+        if(context->srr1 & SINGLE_STEP_BIT)
+        {
+            SetDABR(dabr.load());
+            SetIABR(iabr.load());
+            context->srr1 &= ~SINGLE_STEP_BIT;
+            return TRUE;
+        }
+        else
+        {
+            return FALSE;
+        }
     }
 
     void BreakpointManager::SwitchThreadHandler(OSThread* thread, OSThreadQueue*)
     {
         if (!thread) return;
 
-        uint32_t desired = dabr.load(std::memory_order_relaxed);
+        uint32_t d = dabr.load();
+        uint32_t i = iabr.load();
         uint32_t addr = reinterpret_cast<uint32_t>(thread);
 
-        if (lastThreadAddr.load() == addr && lastDabrSet.load() == desired) return;
+        uint32_t* dPrev = dMap.find(addr);
+        if(!dPrev)
+        {
+            SetDABR(d);
+            dMap.insert(addr, d);
+        }
+        else if(*dPrev != d)
+        {
+            SetDABR(d);
+            *dPrev = d;
+        }
 
-        lastThreadAddr.store(addr);
-        lastDabrSet.store(desired);
-
-        SetDSICallback(DSIHandler);
-        SetDABR(desired);
+        uint32_t* iPrev = iMap.find(addr);
+        if(!iPrev)
+        {
+            SetIABR(i);
+            iMap.insert(addr, i);
+        }
+        else if(*iPrev != i)
+        {
+            SetIABR(i);
+            *iPrev = i;
+        }
     }
 }

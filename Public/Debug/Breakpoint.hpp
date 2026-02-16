@@ -18,4 +18,9 @@ namespace Library::Debug
         uint32_t dar;
         uint32_t pc;
     };
+
+    struct InstructionBreakInfo
+    {
+        uint32_t pc;
+    };
 }

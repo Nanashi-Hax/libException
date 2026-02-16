@@ -1,8 +1,8 @@
 #include "Breakpoint.hpp"
 #include "Debug/Breakpoint.hpp"
-#include "Exception/Patch.hpp"
 #include "Debug.hpp"
 #include "Syscall.hpp"
+#include "Exception.hpp"
 
 #include <cstdint>
 #include <kernel/kernel.h>
@@ -11,12 +11,11 @@ namespace Library::Debug
 {
     void Initialize()
     {
-        Patch::apply();
-        
+        Exception::Initialize();
         BreakpointManager::Initialize();
 
-        //KernelPatchSyscall(0x6D, reinterpret_cast<uint32_t>(&SC_SetIABR));
-        KernelPatchSyscall(0x6D, reinterpret_cast<uint32_t>(&SC_SetDABR));
+        KernelPatchSyscall(0xC0, reinterpret_cast<uint32_t>(&SC_SetDABR));
+        KernelPatchSyscall(0xC1, reinterpret_cast<uint32_t>(&SC_SetIABR));
     }
 
     void Shutdown()
@@ -39,5 +38,22 @@ namespace Library::Debug
     std::vector<DataBreakInfo> ConsumeDataBreakInfo()
     {
         return BreakpointManager::ConsumeDataBreakInfo();
+    }
+
+    void SetInstructionBreakpoint(uint32_t address)
+    {
+        if(!BreakpointManager::IsInitialized()) return;
+        BreakpointManager::SetInstructionBreakpoint(address);
+    }
+
+    void UnsetInstructionBreakpoint()
+    {
+        if(!BreakpointManager::IsInitialized()) return;
+        BreakpointManager::UnsetInstructionBreakpoint();
+    }
+
+    std::vector<InstructionBreakInfo> ConsumeInstructionBreakInfo()
+    {
+        return BreakpointManager::ConsumeInstructionBreakInfo();
     }
 }

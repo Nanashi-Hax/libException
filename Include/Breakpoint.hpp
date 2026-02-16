@@ -2,12 +2,12 @@
 
 #include <cstdint>
 #include <atomic>
-#include <array>
 #include <vector>
 
 #include <coreinit/thread.h>
 
 #include "Debug/Breakpoint.hpp"
+#include "Buffer.hpp"
 
 namespace Library::Debug
 {
@@ -29,34 +29,40 @@ namespace Library::Debug
         static void SetDataBreakpoint(uint32_t address, bool read, bool write, BreakpointSize size);
         static void UnsetDataBreakpoint();
 
+        static void SetInstructionBreakpoint(uint32_t address);
+        static void UnsetInstructionBreakpoint();
+
         static std::vector<DataBreakInfo> ConsumeDataBreakInfo();
+        static std::vector<InstructionBreakInfo> ConsumeInstructionBreakInfo();
 
     private:
         static void SetIABR(uint32_t value);
         static void SetDABR(uint32_t value);
 
-        static void ExcecuteInstruction(OSContext* context, uint32_t instruction);
-
-        static void SetDSICallback(OSExceptionCallbackFn function);
         static void SetSwitchThreadCallback(OSSwitchThreadCallbackFn function);
 
         static BOOL DSIHandler(OSContext* context);
+        static BOOL BreakpointHandler(OSContext* context);
+        static BOOL TraceHandler(OSContext* context);
         static void SwitchThreadHandler(OSThread* thread, OSThreadQueue*);
 
+    private:
         static inline std::atomic<uint32_t> dabr{0};
-        static inline std::atomic<uint32_t> dataBreakpointAddress{0};
-        static inline std::atomic<uint32_t> dataBreakpointSize{0};
+        static inline std::atomic<uint32_t> dBreakpointAddress{0};
+        static inline std::atomic<uint32_t> dBreakpointSize{0};
+        static inline RingBuffer<DataBreakInfo, 256> dInfoBuffer{};
 
-        static constexpr size_t DAR_BUF_SIZE = 256;
-        static constexpr uint32_t DAR_MASK = DAR_BUF_SIZE - 1;
-        static_assert((DAR_BUF_SIZE & (DAR_BUF_SIZE - 1)) == 0, "DAR_BUF_SIZE must be power of two");
+    private:
+        static inline std::atomic<uint32_t> iabr{0};
+        static inline std::atomic<uint32_t> iBreakpointAddress{0};
+        static inline RingBuffer<InstructionBreakInfo, 256> iInfoBuffer{};
 
-        static inline std::array<DataBreakInfo, DAR_BUF_SIZE> infoBuffer{};
-        static inline std::atomic<uint32_t> infoHead{0};
-        static inline std::atomic<uint32_t> infoTail{0};
+    private:
+        static inline Map<uint32_t, uint32_t, 256> dMap{};
+        static inline Map<uint32_t, uint32_t, 256> iMap{}; 
 
-        static inline std::atomic<uint32_t> lastThreadAddr = 0;
-        static inline std::atomic<uint32_t> lastDabrSet = 0;
+        static constexpr const uint32_t MATCH_DABR_BIT = 1 << 22;
+        static constexpr const uint32_t SINGLE_STEP_BIT = 1 << 10;
 
         static inline bool isInitialized = false;
     };

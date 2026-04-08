@@ -30,8 +30,8 @@ namespace Library::Debug
             RegisterInfo info;
             info.pc = context->srr0;
             info.dar = context->dar;
-            std::memcpy(&info.gpr, context->gpr, 32);
-            std::memcpy(&info.fpr, context->fpr, 32);
+            std::memcpy(&info.gpr, context->gpr, sizeof(uint32_t) * 32);
+            std::memcpy(&info.fpr, context->fpr, sizeof(double) * 32);
             info.cr = context->cr;
             info.lr = context->lr;
             info.ctr = context->ctr;

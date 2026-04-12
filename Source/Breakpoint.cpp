@@ -10,16 +10,18 @@
 #include "Exception.hpp"
 #include "coreinit/exception.h"
 
+#include <whb/log.h>
+
 namespace Library::Debug
 {
     void BreakpointManager::SetDataBreakpoint(uint32_t address, bool read, bool write, BreakpointSize size)
     {
         uint32_t mask = (1 << 0) | (1 << 1) | (1 << 2);
-        address &= ~(mask);
+        uint32_t maskedAddress = address & ~(mask);
         uint32_t enabled = true;
         uint32_t r = static_cast<uint32_t>(read);
         uint32_t w = static_cast<uint32_t>(write);
-        uint32_t value = address | (enabled << 2 | w << 1 | r << 0);
+        uint32_t value = maskedAddress | (enabled << 2 | w << 1 | r << 0);
         dBreakpointAddress.store(address);
         dBreakpointSize.store(static_cast<uint32_t>(size));
         dabr.store(value, std::memory_order_relaxed);

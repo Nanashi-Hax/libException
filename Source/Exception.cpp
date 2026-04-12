@@ -1,9 +1,14 @@
+#include "coreinit/context.h"
 #include <atomic>
 #include <coreinit/kernel.h>
 #include <coreinit/debug.h>
 #include <coreinit/thread.h>
 #include <coreinit/exception.h>
 #include <coreinit/core.h>
+
+#include <cstdio>
+#include <whb/log.h>
+#include <coreinit/memorymap.h>
 
 namespace Library::Debug::Exception
 {
@@ -162,7 +167,55 @@ namespace Library::Debug::Exception
 
         // 失敗/未ハンドル時：フラグをクリアして致命
         in.store(false, std::memory_order_release);
-        OSFatal(GetString(type));
+        const char* name = GetString(type);
+
+        char message[2048];
+        int offset = 0;
+
+        if (interruptedContext)
+        {
+            uint32_t codeAddress = interruptedContext->srr0;
+            uint32_t dataAddress = interruptedContext->dar;
+
+            offset += snprintf(message + offset, sizeof(message) - offset,
+                               "%s Exception occurred\n", name);
+
+            if (OSIsAddressValid(codeAddress))
+            {
+                char symbol[1024];
+                OSGetSymbolName(codeAddress, symbol, sizeof(symbol));
+
+                offset += snprintf(message + offset, sizeof(message) - offset,
+                                   "Code: %08X Symbol: %s\n", codeAddress, symbol);
+            }
+            else
+            {
+                offset += snprintf(message + offset, sizeof(message) - offset,
+                                   "Code: %08X\n", codeAddress);
+            }
+
+            if (OSIsAddressValid(dataAddress))
+            {
+                char symbol[1024];
+                OSGetSymbolName(dataAddress, symbol, sizeof(symbol));
+
+                offset += snprintf(message + offset, sizeof(message) - offset,
+                                   "Data: %08X Symbol: %s\n", dataAddress, symbol);
+            }
+            else
+            {
+                offset += snprintf(message + offset, sizeof(message) - offset,
+                                   "Data: %08X\n", dataAddress);
+            }
+
+            WHBLogPrintf("%s", message);
+            OSFatal(message);
+        }
+        else
+        {
+            snprintf(message, sizeof(message), "%s Exception occurred", name);
+            OSFatal(message);
+        }
     }
 
     void SetExceptionHandler()
